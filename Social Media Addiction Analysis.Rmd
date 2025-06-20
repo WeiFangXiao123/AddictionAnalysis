@@ -1,0 +1,168 @@
+---
+title: "Students Social Media Addiciton Analysis"
+output: html_document
+---
+
+```{r}
+# Loading packages
+library(ggplot2)
+library(dplyr)       
+library(readr)
+```
+
+```{r} 
+# Loading data & Knowing data
+df <- read.csv("/Users/xiaoweifang/Desktop/Students Social Media Addiction.csv")
+head(df)
+summary(df)
+```
+```{r}
+# Dealing categorical factors
+df$Gender <- as.factor(df$Gender)
+df$Academic_Level <- as.factor(df$Academic_Level)
+df$Country <- as.factor(df$Country)
+df$Most_Used_Platform <- as.factor(df$Most_Used_Platform)
+df$Affects_Academic_Performance <- as.factor(df$Affects_Academic_Performance)
+df$Relationship_Status <- as.factor(df$Relationship_Status)
+```
+
+```{r}
+#(1) Students Demographic Analysis
+#Age
+Agedata <- df %>%
+  group_by(Age) %>%
+  summarise(count = n()) %>%
+  mutate(percent = round(count / sum(count) * 100, 2),
+         label = paste0(Age, " (", percent, "%)"))
+
+AgeGraph <- ggplot(Agedata, aes(x = as.factor(Age), y = count)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Age Distribution", x = "Age", y = "Count") +
+  theme_minimal()
+#Gender
+Genderdata <- df %>%
+  group_by(Gender) %>%
+  summarise(count = n()) %>%
+  mutate(percent = round(count / sum(count)*100,2),
+         label = paste0(Gender, "(", percent, "%)"))
+
+GenderGraph <- ggplot(Genderdata, aes(x = "", y = count, fill = as.factor(Gender))) +
+  geom_bar(stat = "identity", width = 2) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5)) +
+  theme_void() +
+  labs(title = "Gender Distribution", fill = "Gender")
+#Academic Level
+Acadata <- df %>%
+  group_by(Academic_Level) %>%
+  summarise(count = n()) %>%
+  mutate(percent = round(count / sum(count)*100,2),
+         label = paste0(Academic_Level, "(", percent, "%)"))
+
+AcaGraph <- ggplot(Acadata, aes(x = "", y = count, fill = as.factor(Academic_Level))) +
+  geom_bar(stat = "identity", width = 2) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5)) +
+  theme_void() +
+  labs(title = "Academic Level Distribution", fill = "Academic Level")
+#Country
+top_countries <- df %>%
+  group_by(Country) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count)) %>%
+  slice_head(n = 10)
+
+top_countries$Country <- factor(top_countries$Country, levels = top_countries$Country)
+
+TopCountryGraph <- ggplot(top_countries, aes(x = Country, y = Count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(title = "Top 10 Countries", x = "Country", y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+AgeGraph
+GenderGraph
+AcaGraph
+TopCountryGraph
+```
+```{r}
+# (2) Social Media Usage & Addiction Score Analysis
+
+#Average Daily Usage Hours
+mean_usage <- mean(df$Avg_Daily_Usage_Hours, na.rm = TRUE)
+graph1 <- ggplot(df, aes(x = Avg_Daily_Usage_Hours)) +
+  geom_histogram(aes(y = ..density..), bins = 20, fill = "skyblue", color = "black", alpha = 0.7) +
+  geom_density(color = "darkblue", size = 1) +
+  geom_vline(xintercept = mean_usage, color = "red", linetype = "dashed", size = 1) +
+  annotate("text", x = mean_usage + 0.5, y = 0.1, label = paste0("Mean: ", round(mean_usage, 2), " hours"),
+           color = "red", angle = 0, vjust = -0.5, hjust = 0) +
+  labs(title = "Average Daily Social Media Usage Hours",
+       x = "Hours",
+       y = "Density") +
+  theme_minimal()
+graph1
+
+#Social Media Usage Hours vs Addicted Score
+graph2 <- ggplot(df, aes(x = as.factor(Addicted_Score), y = Avg_Daily_Usage_Hours)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(x = "Addicted Score", y = "Average Daily Social Media Usage (hours)",
+       title = "Usage Hours by Addicted Score")
+graph2
+
+#Addicted Score Distribution
+graph3 <- ggplot(df, aes(x = Addicted_Score)) +
+  geom_histogram(binwidth = 1, fill = "pink", color = "black") +
+  labs(title = "Distribution of Social Media Addiction Scores",
+       x = "Addicted Score", y = "Count")
+
+graph3
+
+#Sleeping Hours vs Addicted Score
+graph4 <- ggplot(df, aes(x = as.factor(Addicted_Score), y = Sleep_Hours_Per_Night)) +
+  geom_boxplot(fill = "pink") +
+  labs(title = "Sleeping Hours vs Addiction Score",
+       x = "Addicted Score", y = "Sleep Hours per Night")
+
+graph4
+```
+
+```{r}
+# Are there significant differences in addiction scores (Addicted_Score) among users of different social media platforms?
+model <- lm(Addicted_Score ~ Most_Used_Platform + Age + Gender + Academic_Level + Sleep_Hours_Per_Night + Avg_Daily_Usage_Hours + Relationship_Status, data = df)
+
+summary(model)
+```
+
+```{r}
+# Visualizing Model
+library(broom)
+platform_effects <- tidy(model) %>%
+  filter(grepl("^Most_Used_Platform", term)) %>%
+  mutate(
+    platform = gsub("Most_Used_Platform", "", term),
+    estimate = estimate,
+    lower = estimate - 1.96 * std.error,
+    upper = estimate + 1.96 * std.error
+  )
+
+ref_row <- tibble(
+  platform = "(Baseline)", 
+  estimate = 0,
+  lower = 0,
+  upper = 0
+)
+
+platform_effects_plot <- bind_rows(ref_row, platform_effects)
+
+ggplot(platform_effects_plot, aes(x = reorder(platform, estimate), y = estimate)) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2, color = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(title = "Estimated Effect of Each Social Media Platform on Addiction Score",
+       x = "Social Media Platform",
+       y = "Effect on Addiction Score (vs. Baseline)") +
+  theme_minimal()
+```
+
+
